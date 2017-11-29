@@ -4,23 +4,36 @@ import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor.ActorSystem
-import akka.http.scaladsl.Http
+import akka.http.scaladsl.{Http, HttpExt}
 import akka.http.scaladsl.model.Uri.{Authority, NamedHost, Host => UriHost}
 import akka.http.scaladsl.model.{HttpProtocol, _}
 import akka.http.scaladsl.model.headers.{Host => HostHeader}
 import akka.stream.ActorMaterializer
-import akka.stream.scaladsl.{Sink, Source}
+import akka.stream.scaladsl.{Flow, Sink, Source}
 import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import play.api.libs.json.Json
 
 import scala.concurrent.Future
+import scala.util.Try
 
 case class Target(scheme: String = "https",
                   host: UriHost,
                   port: Int = 80,
-                  protocol: HttpProtocol = HttpProtocols.`HTTP/1.1`)
+                  protocol: HttpProtocol = HttpProtocols.`HTTP/1.1`,
+                  flow: Flow[(HttpRequest, Unit), (Try[HttpResponse], Unit), Http.HostConnectionPool])
+object Target {
+  def of(scheme: String, host: UriHost, port: Int)(implicit http: HttpExt, mat: ActorMaterializer): Target = {
+    Target(
+      scheme = scheme,
+      host = host,
+      port = port,
+      protocol = HttpProtocols.`HTTP/1.1`,
+      flow = http.cachedHostConnectionPool[Unit](host.address(), port)
+    )
+  }
+}
 
 object Otoroshi {
 
@@ -102,25 +115,27 @@ object Otoroshi {
   implicit val system           = ActorSystem("otoroshi-system", ConfigFactory.parseString(conf))
   implicit val materializer     = ActorMaterializer()
   implicit val executionContext = system.dispatcher
+  implicit val http             = Http()
 
   val metrics = new MetricRegistry()
-  val timer = metrics.timer("requests")
+  val timer   = metrics.timer("requests")
   val counter = new AtomicLong(0L)
-  val client = Http()
 
-  val reporter = ConsoleReporter.forRegistry(metrics).convertRatesTo(TimeUnit.SECONDS).convertDurationsTo(TimeUnit.MILLISECONDS).build()
-
-  val flow = Http().cachedHostConnectionPool[Unit]("127.0.0.1", port = 1030)
+  val reporter = ConsoleReporter
+    .forRegistry(metrics)
+    .convertRatesTo(TimeUnit.SECONDS)
+    .convertDurationsTo(TimeUnit.MILLISECONDS)
+    .build()
 
   val state = {
     val map = new ConcurrentHashMap[String, Seq[Target]]()
     map.put(
       "api.dev.foo.bar",
       Seq(
-        Target("http", NamedHost("127.0.0.1"), 1030),
-        Target("http", NamedHost("127.0.0.1"), 1031),
-        Target("http", NamedHost("127.0.0.1"), 1032),
-        Target("http", NamedHost("127.0.0.1"), 1033),
+        Target.of("http", NamedHost("127.0.0.1"), 1030),
+        Target.of("http", NamedHost("127.0.0.1"), 1031),
+        Target.of("http", NamedHost("127.0.0.1"), 1032),
+        Target.of("http", NamedHost("127.0.0.1"), 1033),
       )
     )
     map
@@ -156,8 +171,8 @@ object Otoroshi {
               entity = request.entity,
               protocol = target.protocol
             )
-            //client.singleRequest(req).map { response =>
-            Source.single((req, ())).via(flow).runWith(Sink.head).map { ttry =>
+            //http.singleRequest(req).map { response =>
+            Source.single((req, ())).via(target.flow).runWith(Sink.head).map { ttry =>
               val response = ttry._1.get
               HttpResponse(
                 status = response.status,
@@ -181,9 +196,9 @@ object Otoroshi {
 
   def main(args: Array[String]) {
     val port          = Option(System.getenv("PORT")).map(_.toInt).getOrElse(8080)
-    val bindingFuture = Http().bindAndHandleAsync(handler, "0.0.0.0", port)
+    val bindingFuture = http.bindAndHandleAsync(handler, "0.0.0.0", port)
     logger.info(s"Otoroshi listening at http://0.0.0.0:$port 👹!")
-    reporter.start(1, TimeUnit.SECONDS)
+    reporter.start(5, TimeUnit.SECONDS)
     Runtime.getRuntime.addShutdownHook(new Thread(() => {
       bindingFuture
         .flatMap(_.unbind())

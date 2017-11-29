@@ -18,14 +18,14 @@ assemblyJarName in assembly := "otoroshi.jar"
 resolvers += "bintray" at "http://jcenter.bintray.com"
 
 libraryDependencies ++= Seq(
-  "org.gnieh"                %% "diffson-play-json"        % "2.1.0" excludeAll (ExclusionRule(organization = "com.typesafe.akka")),
-  "org.iq80.leveldb"         % "leveldb"                   % "0.9",
-  "com.typesafe.akka"        %% "akka-stream-kafka"        % "0.17",
-  "com.github.etaty"         %% "rediscala"                % "1.8.0",
-  "com.github.gphat"         %% "censorinus"               % "2.1.6",
-  "org.typelevel"            %% "cats"                     % "0.9.0",
-  "com.chuusai"              %% "shapeless"                % "2.3.2",
-  "com.datastax.cassandra"   % "cassandra-driver-core"     % "3.3.0" classifier "shaded" excludeAll (
+  "org.gnieh"              %% "diffson-play-json"    % "2.2.3" excludeAll (ExclusionRule(organization = "com.typesafe.akka")),
+  "org.iq80.leveldb"       % "leveldb"               % "0.9",
+  "com.typesafe.akka"      %% "akka-stream-kafka"    % "0.17",
+  "com.github.etaty"       %% "rediscala"            % "1.8.0",
+  "com.github.gphat"       %% "censorinus"           % "2.1.6",
+  "org.typelevel"          %% "cats"                 % "0.9.0",
+  "com.chuusai"            %% "shapeless"            % "2.3.2",
+  "com.datastax.cassandra" % "cassandra-driver-core" % "3.3.0" classifier "shaded" excludeAll (
     ExclusionRule(organization = "io.netty"),
     ExclusionRule(organization = "com.typesafe.akka")
   ),
