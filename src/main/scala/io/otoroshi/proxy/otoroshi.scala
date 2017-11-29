@@ -1,6 +1,6 @@
 package io.otoroshi.proxy
 
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor.ActorSystem
@@ -9,6 +9,8 @@ import akka.http.scaladsl.model.Uri.{Authority, NamedHost, Host => UriHost}
 import akka.http.scaladsl.model.{HttpProtocol, _}
 import akka.http.scaladsl.model.headers.{Host => HostHeader}
 import akka.stream.ActorMaterializer
+import akka.stream.scaladsl.{Sink, Source}
+import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
 import com.typesafe.config.ConfigFactory
 import org.slf4j.LoggerFactory
 import play.api.libs.json.Json
@@ -66,6 +68,23 @@ object Otoroshi {
      |        tcp-no-delay = undefined
      |      }
      |    }
+     |    host-connection-pool {
+     |      max-connections = 16
+     |      max-open-requests = 32
+     |      pipelining-limit = 16
+     |      client {
+     |        user-agent-header = Otoroshi
+     |        socket-options {
+     |          so-receive-buffer-size = undefined
+     |          so-send-buffer-size = undefined
+     |          so-reuse-address = undefined
+     |          so-traffic-class = undefined
+     |          tcp-keep-alive = true
+     |          tcp-oob-inline = undefined
+     |          tcp-no-delay = undefined
+     |        }
+     |      }
+     |    }
      |    parsing {
      |      max-uri-length             = 4k
      |      max-method-length          = 16
@@ -84,13 +103,14 @@ object Otoroshi {
   implicit val materializer     = ActorMaterializer()
   implicit val executionContext = system.dispatcher
 
+  val metrics = new MetricRegistry()
+  val timer = metrics.timer("requests")
   val counter = new AtomicLong(0L)
   val client = Http()
 
-  // import akka.stream.scaladsl.{Flow, Sink, Source}
-  // val flow = Http().cachedHostConnectionPool[Unit]("127.0.0.1", port = 1030)
-  // Source.single((req, ())).via(flow).runWith(Sink.head).map { ttry =>
-  // val response = ttry._1.get
+  val reporter = ConsoleReporter.forRegistry(metrics).convertRatesTo(TimeUnit.SECONDS).convertDurationsTo(TimeUnit.MILLISECONDS).build()
+
+  val flow = Http().cachedHostConnectionPool[Unit]("127.0.0.1", port = 1030)
 
   val state = {
     val map = new ConcurrentHashMap[String, Seq[Target]]()
@@ -116,7 +136,8 @@ object Otoroshi {
   }
 
   def handler(request: HttpRequest): Future[HttpResponse] = {
-    request.header[HostHeader] match {
+    val ctx = timer.time()
+    val fu = request.header[HostHeader] match {
       case Some(HostHeader(host, _)) =>
         Option(state.get(host.address())) match {
           case Some(targets) => {
@@ -135,7 +156,9 @@ object Otoroshi {
               entity = request.entity,
               protocol = target.protocol
             )
-            client.singleRequest(req).map { response =>
+            //client.singleRequest(req).map { response =>
+            Source.single((req, ())).via(flow).runWith(Sink.head).map { ttry =>
+              val response = ttry._1.get
               HttpResponse(
                 status = response.status,
                 headers = response.headers.filter {
@@ -151,16 +174,21 @@ object Otoroshi {
         }
       case None => notFound(request)
     }
+    fu.andThen {
+      case _ => ctx.close()
+    }
   }
 
   def main(args: Array[String]) {
     val port          = Option(System.getenv("PORT")).map(_.toInt).getOrElse(8080)
     val bindingFuture = Http().bindAndHandleAsync(handler, "0.0.0.0", port)
     logger.info(s"Otoroshi listening at http://0.0.0.0:$port 👹!")
+    reporter.start(1, TimeUnit.SECONDS)
     Runtime.getRuntime.addShutdownHook(new Thread(() => {
       bindingFuture
         .flatMap(_.unbind())
         .onComplete(_ => {
+          reporter.stop()
           system.terminate()
           logger.info("Otoroshi server died \uD83D\uDE1F")
         })
