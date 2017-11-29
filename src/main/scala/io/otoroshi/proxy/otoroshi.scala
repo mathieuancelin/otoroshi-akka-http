@@ -4,6 +4,7 @@ import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.concurrent.atomic.AtomicLong
 
 import akka.actor.ActorSystem
+import akka.http.scaladsl.Http.ServerBinding
 import akka.http.scaladsl.{Http, HttpExt}
 import akka.http.scaladsl.model.Uri.{Authority, NamedHost, Host => UriHost}
 import akka.http.scaladsl.model.{HttpProtocol, _}
@@ -11,12 +12,12 @@ import akka.http.scaladsl.model.headers.{Host => HostHeader}
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{Config, ConfigFactory}
 import org.slf4j.LoggerFactory
 import play.api.libs.json.Json
 
 import scala.concurrent.Future
-import scala.util.Try
+import scala.util.{Success, Try}
 
 case class Target(scheme: String = "https",
                   host: UriHost,
@@ -35,84 +36,11 @@ object Target {
   }
 }
 
-object Otoroshi {
+class Otoroshi(otoroshiHost: String, otoroshiPort: Int, conf: Config) {
 
   val logger = LoggerFactory.getLogger("otoroshi")
 
-  val conf = """
-     |akka {
-     |  jvm-exit-on-fatal-error = false
-     |  default-dispatcher {
-     |    type = Dispatcher
-     |    executor = "fork-join-executor"
-     |    fork-join-executor {
-     |      parallelism-factor = 8.0
-     |      parallelism-min = 4
-     |      parallelism-max = 64
-     |      task-peeking-mode = "FIFO"
-     |    }
-     |    throughput = 20
-     |  }
-     |  http {
-     |    server {
-     |      server-header = Otoroshi
-     |      max-connections = 1024
-     |      pipelining-limit = 32
-     |      backlog = 100
-     |      socket-options {
-     |        so-receive-buffer-size = undefined
-     |        so-send-buffer-size = undefined
-     |        so-reuse-address = undefined
-     |        so-traffic-class = undefined
-     |        tcp-keep-alive = true
-     |        tcp-oob-inline = undefined
-     |        tcp-no-delay = undefined
-     |      }
-     |    }
-     |    client {
-     |      user-agent-header = Otoroshi
-     |      socket-options {
-     |        so-receive-buffer-size = undefined
-     |        so-send-buffer-size = undefined
-     |        so-reuse-address = undefined
-     |        so-traffic-class = undefined
-     |        tcp-keep-alive = true
-     |        tcp-oob-inline = undefined
-     |        tcp-no-delay = undefined
-     |      }
-     |    }
-     |    host-connection-pool {
-     |      max-connections = 16
-     |      max-open-requests = 32
-     |      pipelining-limit = 16
-     |      client {
-     |        user-agent-header = Otoroshi
-     |        socket-options {
-     |          so-receive-buffer-size = undefined
-     |          so-send-buffer-size = undefined
-     |          so-reuse-address = undefined
-     |          so-traffic-class = undefined
-     |          tcp-keep-alive = true
-     |          tcp-oob-inline = undefined
-     |          tcp-no-delay = undefined
-     |        }
-     |      }
-     |    }
-     |    parsing {
-     |      max-uri-length             = 4k
-     |      max-method-length          = 16
-     |      max-response-reason-length = 64
-     |      max-header-name-length     = 128
-     |      max-header-value-length    = 16k
-     |      max-header-count           = 128
-     |      max-chunk-ext-length       = 256
-     |      max-chunk-size             = 1m
-     |    }
-     |  }
-     |}
-   """.stripMargin
-
-  implicit val system           = ActorSystem("otoroshi-system", ConfigFactory.parseString(conf))
+  implicit val system = ActorSystem("otoroshi-system", conf)
   implicit val materializer     = ActorMaterializer()
   implicit val executionContext = system.dispatcher
   implicit val http             = Http()
@@ -194,19 +122,112 @@ object Otoroshi {
     }
   }
 
+  def start(): RunningOtoroshi = {
+    new RunningOtoroshi(
+      http.bindAndHandleAsync(handler, otoroshiHost, otoroshiPort).andThen {
+        case Success(_) =>
+          logger.info(s"Otoroshi listening at http://$otoroshiHost:$otoroshiPort 👹!")
+          reporter.start(5, TimeUnit.SECONDS)
+      },
+      this
+    )
+  }
+}
+
+class RunningOtoroshi(bindingFuture: Future[ServerBinding], otoroshi: Otoroshi) {
+  def stop(): Future[Unit] = {
+    bindingFuture
+      .flatMap(_.unbind())(otoroshi.executionContext)
+      .andThen {
+        case _ =>
+          otoroshi.reporter.stop()
+          otoroshi.system.terminate()
+          otoroshi.logger.info("Otoroshi server died \uD83D\uDE1F")
+      }(otoroshi.executionContext)
+  }
+}
+
+object Main {
+
+  val config =
+    ConfigFactory.parseString("""
+      |akka {
+      |  jvm-exit-on-fatal-error = false
+      |  default-dispatcher {
+      |    type = Dispatcher
+      |    executor = "fork-join-executor"
+      |    fork-join-executor {
+      |      parallelism-factor = 8.0
+      |      parallelism-min = 4
+      |      parallelism-max = 64
+      |      task-peeking-mode = "FIFO"
+      |    }
+      |    throughput = 20
+      |  }
+      |  http {
+      |    server {
+      |      server-header = Otoroshi
+      |      max-connections = 1024
+      |      pipelining-limit = 32
+      |      backlog = 100
+      |      socket-options {
+      |        so-receive-buffer-size = undefined
+      |        so-send-buffer-size = undefined
+      |        so-reuse-address = undefined
+      |        so-traffic-class = undefined
+      |        tcp-keep-alive = true
+      |        tcp-oob-inline = undefined
+      |        tcp-no-delay = undefined
+      |      }
+      |    }
+      |    client {
+      |      user-agent-header = Otoroshi
+      |      socket-options {
+      |        so-receive-buffer-size = undefined
+      |        so-send-buffer-size = undefined
+      |        so-reuse-address = undefined
+      |        so-traffic-class = undefined
+      |        tcp-keep-alive = true
+      |        tcp-oob-inline = undefined
+      |        tcp-no-delay = undefined
+      |      }
+      |    }
+      |    host-connection-pool {
+      |      max-connections = 16
+      |      max-open-requests = 32
+      |      pipelining-limit = 16
+      |      client {
+      |        user-agent-header = Otoroshi
+      |        socket-options {
+      |          so-receive-buffer-size = undefined
+      |          so-send-buffer-size = undefined
+      |          so-reuse-address = undefined
+      |          so-traffic-class = undefined
+      |          tcp-keep-alive = true
+      |          tcp-oob-inline = undefined
+      |          tcp-no-delay = undefined
+      |        }
+      |      }
+      |    }
+      |    parsing {
+      |      max-uri-length             = 4k
+      |      max-method-length          = 16
+      |      max-response-reason-length = 64
+      |      max-header-name-length     = 128
+      |      max-header-value-length    = 16k
+      |      max-header-count           = 128
+      |      max-chunk-ext-length       = 256
+      |      max-chunk-size             = 1m
+      |    }
+      |  }
+      |}
+    """.stripMargin)
+
   def main(args: Array[String]) {
-    val port          = Option(System.getenv("PORT")).map(_.toInt).getOrElse(8080)
-    val bindingFuture = http.bindAndHandleAsync(handler, "0.0.0.0", port)
-    logger.info(s"Otoroshi listening at http://0.0.0.0:$port 👹!")
-    reporter.start(5, TimeUnit.SECONDS)
+    val port     = Option(System.getenv("PORT")).map(_.toInt).getOrElse(8080)
+    val otoroshi = new Otoroshi("0.0.0.0", port, config).start()
     Runtime.getRuntime.addShutdownHook(new Thread(() => {
-      bindingFuture
-        .flatMap(_.unbind())
-        .onComplete(_ => {
-          reporter.stop()
-          system.terminate()
-          logger.info("Otoroshi server died \uD83D\uDE1F")
-        })
+      otoroshi.stop()
     }))
   }
 }
