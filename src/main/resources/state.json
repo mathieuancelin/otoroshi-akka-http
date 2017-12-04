@@ -1,0 +1,168 @@
+{
+  "config": {
+    "lines": ["prod"],
+    "limitConcurrentRequests": true,
+    "maxConcurrentRequests": 50000,
+    "useCircuitBreakers": true,
+    "apiReadOnly": false,
+    "registerFromCleverHook": false,
+    "u2fLoginOnly": true,
+    "ipFiltering": {
+      "whitelist": [],
+      "blacklist": []
+    },
+    "throttlingQuota": 10000000,
+    "perIpThrottlingQuota": 50000,
+    "analyticsEventsUrl": null,
+    "analyticsWebhooks": [],
+    "alertsWebhooks": [],
+    "alertsEmails": [],
+    "endlessIpAddresses": []
+  },
+  "admins": [],
+  "simpleAdmins": [
+    {
+      "username": "admin@otoroshi.io",
+      "password": "$2a$10$eWVP6A6Jsz0DNMF7Q6Kf5.R2KvCLaT7W6e0rOCOxawORiI0KLUQdS",
+      "label": "Otoroshi Admin",
+      "createdAt": 1493971715708
+    }
+  ],
+  "serviceGroups": [
+    {
+      "id": "default",
+      "name": "default-group",
+      "description": "The default group"
+    },
+    {
+      "id": "admin-api-group",
+      "name": "Otoroshi Admin Api group",
+      "description": "No description"
+    }
+  ],
+  "apiKeys": [
+    {
+      "clientId": "9HFCzZIPUQQvfxkq",
+      "clientSecret": "lmwAGwqtJJM7nOMGKwSAdOjC3CZExfYC7qXd4aPmmseaShkEccAnmpULvgnrt6tp",
+      "clientName": "default-apikey",
+      "authorizedGroup": "default",
+      "enabled": true,
+      "throttlingQuota": 100,
+      "dailyQuota": 1000000,
+      "monthlyQuota": 1000000000000000000,
+      "metadata": {}
+    },
+    {
+      "clientId": "admin-api-apikey-id",
+      "clientSecret": "admin-api-apikey-secret",
+      "clientName": "Otoroshi Backoffice ApiKey",
+      "authorizedGroup": "admin-api-group",
+      "enabled": true,
+      "throttlingQuota": 10000000,
+      "dailyQuota": 10000000,
+      "monthlyQuota": 10000000,
+      "metadata": {}
+    }
+  ],
+  "serviceDescriptors": [
+    {
+      "id": "admin-api-service",
+      "groupId": "admin-api-group",
+      "name": "otoroshi-admin-api",
+      "env": "prod",
+      "domain": "foo.bar",
+      "subdomain": "otoroshi-api",
+      "targets": [
+        {
+          "host": "localhost:8080",
+          "scheme": "http"
+        }
+      ],
+      "root": "/",
+      "enabled": true,
+      "privateApp": false,
+      "forceHttps": false,
+      "maintenanceMode": false,
+      "buildMode": false,
+      "enforceSecureCommunication": true,
+      "publicPatterns": [],
+      "privatePatterns": [],
+      "additionalHeaders": {
+        "Host": "otoroshi-admin-internal-api.foo.bar"
+      },
+      "matchingHeaders": {},
+      "ipFiltering": {
+        "whitelist": [],
+        "blacklist": []
+      },
+      "api": {
+        "exposeApi": false
+      },
+      "healthCheck": {
+        "enabled": false,
+        "url": "/"
+      },
+      "metadata": {}
+    },
+    {
+      "id": "6ltdlglzuU5C0cWMXhzqS7HNgekKdNezW0t21xSqIpgFb7e2AmIRpQc4fFLLxvkj",
+      "groupId": "default",
+      "name": "local-api",
+      "env": "prod",
+      "domain": "foo.bar",
+      "subdomain": "api",
+      "targets": [
+        {
+          "host": "127.0.0.1:1030",
+          "scheme": "http"
+        },
+        {
+          "host": "127.0.0.1:1031",
+          "scheme": "http"
+        },
+        {
+          "host": "127.0.0.1:1032",
+          "scheme": "http"
+        },
+        {
+          "host": "127.0.0.1:1033",
+          "scheme": "http"
+        },
+        {
+          "host": "127.0.0.1:1034",
+          "scheme": "http"
+        },
+        {
+          "host": "127.0.0.1:1035",
+          "scheme": "http"
+        }
+      ],
+      "root": "/",
+      "enabled": true,
+      "privateApp": false,
+      "forceHttps": false,
+      "maintenanceMode": false,
+      "buildMode": false,
+      "enforceSecureCommunication": false,
+      "publicPatterns": [
+        "/.*"
+      ],
+      "privatePatterns": [],
+      "additionalHeaders": {},
+      "matchingHeaders": {},
+      "ipFiltering": {
+        "whitelist": [],
+        "blacklist": []
+      },
+      "api": {
+        "exposeApi": false
+      },
+      "healthCheck": {
+        "enabled": false,
+        "url": "/"
+      },
+      "metadata": {}
+    }
+  ],
+  "errorTemplates": []
+}

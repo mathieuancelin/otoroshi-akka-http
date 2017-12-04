@@ -18,3 +18,8 @@ sbt ';clean;compile;assembly'
 ```
 java -jar ./target/scala-2.12/otoroshi.jar
 ```
+
+## Todo
+
+* [ ] add implicit class for HttpRequest to get host, uriString, domain, etc ...
+* @inline stuff

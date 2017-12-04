@@ -1,4 +1,4 @@
-package io.otoroshi.proxy
+package io.otoroshi.poc
 
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.concurrent.atomic.AtomicLong
@@ -40,7 +40,7 @@ class Otoroshi(otoroshiHost: String, otoroshiPort: Int, conf: Config) {
 
   val logger = LoggerFactory.getLogger("otoroshi")
 
-  implicit val system = ActorSystem("otoroshi-system", conf)
+  implicit val system           = ActorSystem("otoroshi-system", conf)
   implicit val materializer     = ActorMaterializer()
   implicit val executionContext = system.dispatcher
   implicit val http             = Http()
